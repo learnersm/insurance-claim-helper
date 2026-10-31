@@ -1,0 +1,3 @@
+# Crontab sample — edit paths, then:  crontab cron.sample   (or add the line manually)
+# Daily 04:00: sync Google Photos album (optional), then process until budget.
+0 4 * * * cd /path/to/insurance-claim-helper && (rclone sync "gphotos:album/My Insurance Album" inbox/ --include "*.{jpg,jpeg,pdf}" || true) && /usr/bin/python3 process.py >> data/cron.log 2>&1

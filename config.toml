@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------
+# insurance-claim-helper configuration
+# Paths below are relative to this file's directory.
+# ---------------------------------------------------------------
+
+# Where the source documents land (jpg / jpeg / pdf).
+# If you use Google Photos: sync your album here with rclone (see README).
+[inbox]
+dir = "inbox"
+extensions = ["jpg", "jpeg", "pdf"]   # accepted file types
+
+# Raw extraction zone: one full JSON document per source file.
+[output]
+raw = "data/raw"        # "if a file has a corresponding JSON file" -> inbox/foo.jpg = data/raw/foo.json
+summary = "data/summary"
+
+# Daily-run settings.
+[run]
+engine = "opencode"     # "opencode" = delegate extraction to any opencode instance (see AGENTS.md)
+                        # "mock"     = offline demo extractor, no LLM needed (for testing)
+max_files_per_run = 5   # "token budget": stop after N files, resume on next cron run
+max_attempts = 3        # retry a file this many times before marking it failed
+timeout_seconds = 600   # per-file timeout for the extraction engine
+
+[opencode]
+# Command used to invoke the opencode instance.
+cmd = "opencode run"
+# Optional: pin the model, e.g. "anthropic/claude-sonnet-4-5". Empty = instance default.
+model = ""
+# Attach the file to the opencode message as well as referencing the path
+# (needed for images; PDFs are referenced by path and read with tools).
+attach_images = true
+
+[mock]
+# Deterministic offline extractor settings (engine = "mock").
+# The mock simply fabricates a full-JSON capture so the pipeline can be tested
+# without an LLM. It never touches real OCR/extraction.
+text = ""               # optional short text override; empty = auto from filename
