@@ -43,7 +43,9 @@ do exactly this for a given file:
 
 `process.py` maps your full capture into these summary columns — include them
 under these exact key names when the document contains them so no information
-is lost: `insurance_id`, `expense_id`, `hospital_id`, `hospital_name`,
-`expense_description`, `expense_date`, `amount`, `reimbursed`, `doctor`.
-Synonyms like `invoice_number`, `bill_number`, `total`, `physician` are
-recognized, but the canonical keys are preferred.
+is lost: `date`, `bill_reference_number`, `organisation_name`, `insurance_id`,
+`expense_id`, `hospital_id`, `hospital_name`, `expense_description`,
+`expense_date`, `amount`, `reimbursed`, `doctor` (`sl_no` is assigned
+automatically, no need to extract it).
+Synonyms like `invoice_number`, `bill_number`, `reference_no`, `total`,
+`physician` are recognized, but the canonical keys are preferred.

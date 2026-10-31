@@ -211,10 +211,19 @@ def parse_json_reply(text: str) -> dict:
 # --------------------------------------------------------------- summary ---
 
 SUMMARY_FIELDS = [
+    "sl_no", "date", "bill_reference_number", "organisation_name",
     "insurance_id", "expense_id", "hospital_id", "hospital_name",
     "expense_description", "expense_date", "amount", "reimbursed", "doctor",
 ]
 SYNONYMS = {
+    "date":                ["date", "expense_date", "invoice_date", "bill_date",
+                            "visit_date", "treatment_date", "date_of_expense"],
+    "bill_reference_number": ["bill_reference_number", "bill_number", "bill_no",
+                            "reference_number", "reference_no", "invoice_number",
+                            "receipt_number", "expense_id"],
+    "organisation_name":   ["organisation_name", "organization_name", "organisation",
+                            "organization", "hospital_name", "hospital",
+                            "insurance_company", "company_name", "provider_name"],
     "insurance_id":        ["insurance_id", "insurance_number", "policy_number", "policy_no",
                             "claim_number", "insurance_policy_id", "tracking_number"],
     "expense_id":          ["expense_id", "medical_expense_id", "invoice_number", "invoice_id",
@@ -259,12 +268,26 @@ def find_field(obj, candidates):
 def summarize(source_rel: str, raw: dict) -> dict:
     row = {}
     for field in SUMMARY_FIELDS:
+        if field == "sl_no":
+            row[field] = None  # assigned when the sheet is written
+            continue
         val = find_field(raw, SYNONYMS[field])
         if field == "reimbursed" and val is None:
             val = "pending"  # you track reimbursement status yourself
         row[field] = json.dumps(val, ensure_ascii=False) if isinstance(val, (dict, list)) else str(val)
     row["source_file"] = os.path.basename(source_rel)
     return row
+
+
+def next_sl_no(cfg: dict) -> int:
+    csv_path = os.path.join(cfg["root"], cfg["output"]["summary"], "summary.csv")
+    n = 0
+    try:
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            n = sum(1 for _ in csv.reader(f)) - 1  # minus header
+    except FileNotFoundError:
+        pass
+    return max(n, 0) + 1
 
 
 def append_summary(cfg: dict, row: dict) -> None:
@@ -275,6 +298,8 @@ def append_summary(cfg: dict, row: dict) -> None:
         w = csv.DictWriter(f, fieldnames=fields)
         if not exists:
             w.writeheader()
+        if row.get("sl_no") is None:
+            row["sl_no"] = next_sl_no(cfg)  # provisional; final numbers set by rebuild
         w.writerow(row)
 
 
@@ -296,6 +321,8 @@ def rebuild_summary(cfg: dict, state: dict) -> int:
                 break
             except Exception:
                 continue
+    for i, row in enumerate(rows, 1):  # serial numbers are always ascending 1..n
+        row["sl_no"] = i
     csv_path = os.path.join(cfg["root"], cfg["output"]["summary"], "summary.csv")
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(csv_path), suffix=".tmp")
     with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:

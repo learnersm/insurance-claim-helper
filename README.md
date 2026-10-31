@@ -18,16 +18,20 @@ data/state.json       <- what was processed last, hashes, failures
   JSON. Cheaper to query later than the image itself; if the tracked field
   list changes, re-derive from raw instead of re-reading photos.
 - `data/summary/summary.csv` is the **claim tracker**: one row per document
-  with the currently tracked fields —
+  with these columns (all fields land in the single sheet) —
 
   | column | meaning |
   |---|---|
+  | `sl_no` | serial number, always `1..n` ascending |
+  | `date` | date of the expense |
+  | `bill_reference_number` | bill / invoice / reference number |
+  | `organisation_name` | organisation involved (hospital, or company) |
   | `insurance_id` | insurance/policy/claim id |
-  | `expense_id` | medical expense / invoice / bill number |
+  | `expense_id` | medical expense / medical-claim identifier |
   | `hospital_id` | hospital identifier |
   | `hospital_name` | hospital name |
   | `expense_description` | what the expense was about |
-  | `expense_date` | date of the expense |
+  | `expense_date` | date of the expense (as printed on the document) |
   | `amount` | amount of the expense |
   | `reimbursed` | `pending` until you mark it (reimbursed / not reimbursed) |
   | `doctor` | treating doctor |

@@ -119,11 +119,19 @@ def main():
     check("summary row fields mapped", bool(new)
           and new[0]["insurance_id"].startswith("INS-")
           and new[0]["hospital_id"].startswith("HSP-")
+          and new[0]["bill_reference_number"].startswith("INV-")
+          and bool(new[0]["organisation_name"])
+          and bool(new[0]["date"])
           and new[0]["amount"].isdigit()
           and new[0]["doctor"].startswith("Dr.")
           and bool(new[0]["expense_description"])
           and bool(new[0]["expense_date"])
           and new[0]["reimbursed"] == "no", new)
+    check("all required sheet columns present",
+          list(rows[0].keys()) == ["sl_no", "date", "bill_reference_number",
+          "organisation_name", "insurance_id", "expense_id", "hospital_id",
+          "hospital_name", "expense_description", "expense_date", "amount",
+          "reimbursed", "doctor", "source_file"], list(rows[0].keys()))
     # change an already-done file -> must reprocess
     with open(os.path.join(inbox, "bill-04.jpg"), "r+b") as f:
         f.seek(-1, os.SEEK_END)
