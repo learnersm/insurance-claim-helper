@@ -179,6 +179,18 @@ def main():
           st3["files"]["inbox/a.jpg"]["status"] == "done"
           and st3["files"]["inbox/a.jpg"]["attempts"] == 1, st3["files"])
 
+    print("[7] one file containing multiple bills -> one summary row per bill")
+    with open(os.path.join(inbox, "multi-01.jpg"), "wb") as f:
+        f.write(b"multi-01 stub")
+    process.run(cfg, args)
+    rows = summary_rows(cfg)
+    multi = [r for r in rows if r["source_file"] == "multi-01.jpg"]
+    check("2 bills in that file -> 2 rows", len(multi) == 2, len(multi))
+    check("distinct bills, shared file, ascending sl_no",
+          multi[0]["expense_id"] != multi[1]["expense_id"]
+          and [r["sl_no"] for r in rows] == [str(i) for i in range(1, len(rows) + 1)],
+          multi)
+
     print(f"\n{PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0
 

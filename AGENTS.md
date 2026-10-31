@@ -11,11 +11,14 @@ opencode run -f <path/to/file.jpg> \
   "Read the file \`<abs path>\` and extract all fields as one JSON object. <INSTRUCTION_NOTE>"
 ```
 
-The instruction note says: include every field using snake_case keys —
-patient/claimant, insurance/company/policy ids and names, hospital/clinic
-details, doctor, treatments, line items, dates, amounts, currency, totals,
-reference numbers, notes. Reply with ONLY the JSON object — no prose, no
-markdown fences.
+The instruction note says: if the file contains several bills/claims (multiple
+pages, or several documents photographed together), extract EACH bill as its
+own JSON object and reply `{"claims": [bill1, bill2, ...]}`; if it holds
+exactly one bill, reply with the bill object directly. Include every field of
+each bill using snake_case keys — patient/claimant, insurance/company/policy
+ids and names, hospital/clinic details, doctor, treatments, line items, dates,
+amounts, currency, totals, reference numbers, notes. Reply with ONLY the JSON
+— no prose, no markdown fences.
 
 If you are an opencode instance working manually (the script isn't calling you),
 do exactly this for a given file:

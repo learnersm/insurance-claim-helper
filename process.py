@@ -106,10 +106,14 @@ def raw_path_for(cfg: dict, rel: str, digest: str) -> str:
 # ------------------------------------------------------------ extraction ---
 
 INSTRUCTION_NOTE = (
-    "Include EVERY field in the document using snake_case keys: patient/claimant, "
+    "A single file may contain MULTIPLE bills/claims (several pages or several "
+    "documents photographed together): in that case extract EACH bill as its "
+    "own JSON object and reply {\"claims\": [bill1, bill2, ...]}. If the file "
+    "holds exactly one bill, reply with the bill object directly. Include "
+    "EVERY field of each bill using snake_case keys: patient/claimant, "
     "insurance/company/policy ids and names, hospital/clinic details, doctor, "
-    "treatments, line items, dates, amounts, currency, totals, reference numbers, "
-    "notes. Reply with ONLY the JSON object — no prose, no markdown fences."
+    "treatments, line items, dates, amounts, currency, totals, reference "
+    "numbers, notes. Reply with ONLY the JSON — no prose, no markdown fences."
 )
 
 
@@ -142,7 +146,7 @@ def mock_extract(abs_path: str) -> str:
     with open(abs_path, "rb") as f:
         seed = int(hashlib.sha256(f.read()).hexdigest()[:12], 16)
     rng = random.Random(seed)
-    doc = {
+    one = lambda: {
         "mock": True,
         "claim_type": "insurance_claim",
         "insurance_company": "Continental Health Assurance",
@@ -164,7 +168,11 @@ def mock_extract(abs_path: str) -> str:
             {"item": "Medicines", "qty": 1, "price": rng.randint(200, 4000)},
         ],
     }
-    return json.dumps(doc)
+    d1, d2 = one(), one()
+    if "multi" in os.path.basename(abs_path).lower():
+        return json.dumps({"mock": True, "page_count": 2,
+                           "claims": [d1, d2]})  # one photo, two bills
+    return json.dumps(d1)
 
 
 def parse_json_reply(text: str) -> dict:
@@ -265,18 +273,45 @@ def find_field(obj, candidates):
     return None
 
 
-def summarize(source_rel: str, raw: dict) -> dict:
-    row = {}
-    for field in SUMMARY_FIELDS:
-        if field == "sl_no":
-            row[field] = None  # assigned when the sheet is written
-            continue
-        val = find_field(raw, SYNONYMS[field])
-        if field == "reimbursed" and val is None:
-            val = "pending"  # you track reimbursement status yourself
-        row[field] = json.dumps(val, ensure_ascii=False) if isinstance(val, (dict, list)) else str(val)
-    row["source_file"] = os.path.basename(source_rel)
-    return row
+CLAIM_KEYS = ("claims", "bills")
+
+def iter_claims(doc: dict):
+    """Yield one dict per bill. A single-bill file yields the doc itself;
+    a multi-bill file ({'claims': [...]}) yields each entry, with any
+    file-level fields (e.g. an insurance id) shared into every claim."""
+    claims = None
+    for key in CLAIM_KEYS:
+        val = doc.get(key)
+        if isinstance(val, list) and val:
+            claims = list(val)
+            break
+    if not claims or not all(isinstance(c, dict) for c in claims):
+        yield doc
+        return
+    common = {k: v for k, v in doc.items() if k not in CLAIM_KEYS}
+    for idx, c in enumerate(claims, 1):
+        merged = {**common, **c}
+        if len(claims) > 1:
+            merged["_claim_index"] = idx
+        yield merged
+
+
+def summarize(source_rel: str, raw: dict) -> list[dict]:
+    rows = {}
+    for i, claim in enumerate(iter_claims(raw)):
+        row = {"_order": i}
+        for field in SUMMARY_FIELDS:
+            if field == "sl_no":
+                row[field] = None  # assigned when the sheet is written
+                continue
+            val = find_field(claim, SYNONYMS[field])
+            if field == "reimbursed" and val is None:
+                val = "pending"  # you track reimbursement status yourself
+            row[field] = json.dumps(val, ensure_ascii=False) if isinstance(val, (dict, list)) else str(val)
+        row["source_file"] = os.path.basename(source_rel)
+        row["_key"] = f"{source_rel}#bill{i+1}"
+        rows[row["_key"]] = row
+    return list(rows.values())
 
 
 def next_sl_no(cfg: dict) -> int:
@@ -300,13 +335,13 @@ def append_summary(cfg: dict, row: dict) -> None:
             w.writeheader()
         if row.get("sl_no") is None:
             row["sl_no"] = next_sl_no(cfg)  # provisional; final numbers set by rebuild
-        w.writerow(row)
+        w.writerow({k: v for k, v in row.items() if not k.startswith("_")})
 
 
 # Self-healing rebuild of summary.csv from all processed raw files.
 def rebuild_summary(cfg: dict, state: dict) -> int:
     raw_dir = os.path.join(cfg["root"], cfg["output"]["raw"])
-    rows = []
+    flat = {}
     for rel in sorted(state.get("files", {})):
         if state["files"][rel].get("status") != "done":
             continue
@@ -317,16 +352,19 @@ def rebuild_summary(cfg: dict, state: dict) -> int:
             try:
                 with open(hit, encoding="utf-8") as f:
                     doc = json.load(f)
-                rows.append(summarize(rel, doc))
+                for row in summarize(rel, doc):  # one file -> one or more bills
+                    flat[row["_key"]] = row
                 break
             except Exception:
                 continue
+    rows = list(flat.values())
     for i, row in enumerate(rows, 1):  # serial numbers are always ascending 1..n
         row["sl_no"] = i
     csv_path = os.path.join(cfg["root"], cfg["output"]["summary"], "summary.csv")
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(csv_path), suffix=".tmp")
     with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=SUMMARY_FIELDS + ["source_file"])
+        w = csv.DictWriter(f, fieldnames=SUMMARY_FIELDS + ["source_file"],
+                           extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
     os.replace(tmp, csv_path)
@@ -401,7 +439,8 @@ def run(cfg: dict, args) -> int:
                 "processed_at": doc["_extracted_at"],
             }
             save_state(cfg, state)          # stored correctly before moving on
-            append_summary(cfg, summarize(rel, doc))
+            for row in summarize(rel, doc):  # one or more bills per file
+                append_summary(cfg, row)
             processed += 1
         except Exception as e:
             state["files"][rel] = {
